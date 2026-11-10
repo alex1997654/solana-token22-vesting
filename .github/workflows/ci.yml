@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18.19.1
+          cache: yarn
+
+      - name: Install Rust (stable, for anchor-cli)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo (anchor-cli)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: anchor-0.30.1-${{ runner.os }}
+
+      - name: Install Anchor 0.30.1
+        run: command -v anchor >/dev/null 2>&1 || cargo install anchor-cli --version 0.30.1 --locked
+
+      - name: Cache solana
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/solana
+            ~/.local/share/solana
+          key: solana-1.18.26
+
+      - name: Install Solana 1.18.26
+        run: |
+          curl -sSfL https://release.anza.xyz/v1.18.26/install | sh
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+      - name: Generate local test wallet
+        run: bash scripts/setup-wallet.sh
+
+      - name: Install JS dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build and test against a local validator
+        run: anchor test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy -p token22_vesting --all-targets -- -D warnings
